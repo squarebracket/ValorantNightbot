@@ -2,6 +2,7 @@
   /** @type {string} */ streamUptimeString,
   /** @type {string} */ streamStartDateString,
   /** @type {string} */ urlEncodedGetMmrHistoryResponseJson,
+  /** @type {string} */ urlEncodedGetMatchHistoryResponseJson,
   /** @type {string} */ playerName,
 ) => {
 
@@ -21,6 +22,11 @@
     return getMmrHistoryResponseJson;
   }
 
+  const getMatchHistoryResponseJson = decodeURIComponent(urlEncodedGetMatchHistoryResponseJson);
+  if (/^Error Connecting To Remote Server\b/i.test(getMatchHistoryResponseJson)) {
+    return getMatchHistoryResponseJson;
+  }
+
   try {
     /** @type {{
       readonly data: ReadonlyArray<{
@@ -28,7 +34,8 @@
         readonly date_raw: number;
       }>;
     }} */
-    const getMmrHistoryResponse = JSON.parse(getMmrHistoryResponseJson);
+    const getMmrHistoryResponse = JSON.parse(getMmrHistoryResponseJson).data;
+    const getMatchHistoryResponse = JSON.parse(getMatchHistoryResponseJson).data.filter((match) => match.meta.mode === 'Competitive');
 
     let winCountThisStream = 0;
     let lossCountThisStream = 0;
@@ -39,16 +46,19 @@
     let earliestMatchThisStream = Number.POSITIVE_INFINITY;
     let earliestRawEloThisStream = null;
 
-    for (const {date_raw: dateUnixS, mmr_change_to_last_game: mmrChange, elo: rawElo} of getMmrHistoryResponse.data) {
+    for (let i = 0; i < getMmrHistoryResponse.length; i++) {
+      const {date_raw: dateUnixS, mmr_change_to_last_game: mmrChange, elo: rawElo} = getMmrHistoryResponse[i];
+      const { teams } = getMatchHistoryResponse[i];
+      const playerTeam = getMatchHistoryResponse[i].stats.team.toLowerCase();
+      const otherTeam = playerTeam === 'red' ? 'blue' : 'red';
       const date = new Date(dateUnixS * 1000);
+
       if (date >= streamStartDate) {
-        if (mmrChange > 0) {
-          winCountThisStream++;
-        }
-        else if (mmrChange == 0) {
+        if (teams.red === teams.blue) {
           drawCountThisStream++;
-        }
-        else {
+        } else if (teams[playerTeam] > teams[otherTeam]) {
+          winCountThisStream++;
+        } else {
           lossCountThisStream++;
         }
 
